@@ -1,0 +1,307 @@
+---
+title: "Analysis of Apple Health Data"
+output: flexdashboard::flex_dashboard
+vertical_layout: scroll
+---
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#install.packages("tidyverse")
+library(tidyverse)
+
+#install.packages("xml2")
+library(xml2)
+
+#devtools::install_github("hrbrmstr/xmlview")
+library(xmlview)
+
+#aphealth1 <- xml2::read_xml("export.xml")
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+stand <- read.csv(file = "HKCategoryTypeIdentifierAppleStandHour.csv", header = FALSE)
+activecalories <- read.csv(file = "HKQuantityTypeIdentifierActiveEnergyBurned.csv", header = FALSE)
+sleep <- read.csv(file = "HKCategoryTypeIdentifierSleepAnalysis.csv", header = FALSE)
+exercise <- read.csv(file = "HKQuantityTypeIdentifierAppleExerciseTime.csv", header = FALSE)
+period <- read.csv(file = "HKCategoryTypeIdentifierMenstrualFlow.csv", header = FALSE)
+distance <- read.csv(file = "HKQuantityTypeIdentifierDistanceWalkingRunning.csv", header = FALSE)
+
+
+resthr <- read.csv(file = "HKQuantityTypeIdentifierRestingHeartRate.csv", header = FALSE)
+walkhr <- read.csv(file = "HKQuantityTypeIdentifierWalkingHeartRateAverage.csv", header = FALSE)
+totalhr <- read.csv(file = "HKQuantityTypeIdentifierHeartRate.csv", header = FALSE)
+varhr <- read.csv(file = "HKQuantityTypeIdentifierHeartRateVariabilitySDNN.csv", header = FALSE)
+
+```
+Individual Metrics 
+===================================== 
+
+This data was collected over about 18 months by my Apple watch. 
+
+
+Column {.tabset}
+-------------------------------------
+### Standing
+```{r, warning=FALSE}
+cleanstand <- stand[-1,] %>%
+  tidyr::separate("V7", c("software", "recordtime","hourstart","hourend","datatype"), sep = ";") 
+table(cleanstand$datatype)
+```
+
+### Sleep
+```{r}
+cleansleep <- sleep[-1,] %>%
+  tidyr::separate("V7", c("software", "recordtime","sleepstart","sleepend","datatype"), sep = ";") %>%
+  mutate(lengthsleep = as.POSIXct(sleepend) - as.POSIXct(sleepstart))
+
+ggplot(data=cleansleep[cleansleep$lengthsleep > 10000,], aes(x=as.Date(sleepend), y=lengthsleep/3600))+
+  theme_bw()+
+  geom_hline(yintercept = 8, color = "red", alpha = .5)+
+  geom_point()+
+  geom_smooth(method=lm)+
+  scale_x_date(date_breaks = "3 month", 
+                 labels=scales::date_format("%b-%Y"))+
+  labs(title="Length of Night's Sleep", y="Hours", x="Month")
+
+```
+
+### Exercise Minutes
+
+```{r, warning=FALSE}
+cleanexercise <- exercise[-1,] %>%
+  tidyr::separate("V7", c("software", "units","recordtime","starttime","endtime","value"), sep = ";") %>%
+  mutate(day = as.Date(starttime)) %>%
+  group_by(day, units) %>%
+  summarize(minutes = sum(as.numeric(value)))
+
+ggplot(data=cleanexercise, aes(x=as.Date(day), y=minutes))+
+  theme_bw()+
+  geom_point()+
+  geom_smooth(method=lm)+
+  geom_vline(xintercept=as.Date("2016-11-15"))+
+  scale_x_date(date_breaks = "3 month", 
+                 labels=scales::date_format("%b-%Y"))+
+  labs(title="Minutes of Exercise, After Apple Watch", y="Minutes", x="Month")
+
+```
+
+### Distance Walked/Run
+```{r, warning=FALSE}
+
+cleandist <- distance[-1,] %>%
+  tidyr::separate("V7", c("software", "units","recordtime","starttime","endtime","value"), sep = ";") %>%
+  mutate(day = as.Date(starttime)) %>%
+  group_by(day, units) %>%
+  summarize(distance = sum(as.numeric(value)))
+
+ggplot(data=cleandist, aes(x=as.Date(day), y=distance))+
+  theme_bw()+
+  geom_point()+
+  geom_smooth(method=lm)+
+  geom_vline(xintercept=as.Date("2016-11-15"))+
+  scale_x_date(date_breaks = "3 month", 
+                 labels=scales::date_format("%b-%Y"))+
+  labs(title="Distance Walked/Run, Before and After Apple Watch", y="Miles", x="Month")
+
+```
+
+
+### Active Calories
+```{r, warning=FALSE}
+cleanactcal <- activecalories[-1,] %>%
+  tidyr::separate("V7", c("software", "units","recordtime","starttime","endtime","value"), sep = ";")  %>%
+  mutate(day = as.Date(starttime)) %>%
+  group_by(day, units) %>%
+  summarize(calories = sum(as.numeric(value)))
+
+
+ggplot(data=cleanactcal, aes(x=as.Date(day), y=calories))+
+  theme_bw()+
+  geom_point()+
+  geom_smooth(method=lm)+
+  geom_vline(xintercept=as.Date("2016-11-15"))+
+  scale_x_date(date_breaks = "3 month", 
+                 labels=scales::date_format("%b-%Y"))+
+  labs(title="Active Calories Burned, After Apple Watch", y="Kcal", x="Month")
+
+```
+
+### Resting Heart Rate
+```{r}
+cleanresthr <- resthr[-1,] %>%
+  as.data.frame() %>%
+  tidyr::separate(".", c("type", "sourceName", "sourceVersion", "units","recordtime","starttime","endtime","value"), sep = ";") %>%
+  mutate(day = as.Date(starttime)) %>%
+  group_by(day, units) %>%
+  summarize(avg = mean(as.numeric(value)),
+            max = max(as.numeric(value)),
+            min = min(as.numeric(value)))
+
+ggplot(data=cleanresthr, aes(x=as.Date(day), y=avg))+
+  theme_bw()+
+  geom_point()+
+  #geom_point(aes(x=as.Date(day), y=min), color = "red", alpha = .4)+
+  #geom_point(aes(x=as.Date(day), y=max), color = "blue", alpha = .4)+
+  geom_vline(xintercept=as.Date("2016-11-15"))+
+  scale_x_date(date_breaks = "1 month", 
+                 labels=scales::date_format("%b-%Y"))+
+  labs(title="Average Resting Heart Rate", y="BPM", x="Month")
+
+```
+
+
+### Walking Heart Rate
+```{r, warning=FALSE}
+
+
+cleanwalkhr <- walkhr[-1,] %>%
+  as.data.frame() %>%
+  tidyr::separate(".", c("type", "sourceName", "sourceVersion", "units","recordtime","starttime","endtime","value"), sep = ";") %>%
+  mutate(day = as.Date(starttime)) %>%
+  group_by(day, units) %>%
+  summarize(avg = mean(as.numeric(value)),
+            max = max(as.numeric(value)),
+            min = min(as.numeric(value)))
+
+
+ggplot(data=cleanwalkhr, aes(x=as.Date(day), y=avg))+
+  theme_bw()+
+  geom_point()+
+  #geom_point(aes(x=as.Date(day), y=min), color = "red", alpha = .4)+
+  #geom_point(aes(x=as.Date(day), y=max), color = "blue", alpha = .4)+
+  geom_vline(xintercept=as.Date("2016-11-15"))+
+  scale_x_date(date_breaks = "1 month", 
+                 labels=scales::date_format("%b-%Y"))+
+  labs(title="Average Walking Heart Rate", y="BPM", x="Month")
+
+```
+
+
+### Total Heart Rate
+```{r, warning=FALSE}
+
+cleantotalhr <- totalhr[-1,] %>%
+  tidyr::separate("V7", c("software", "units","recordtime","starttime","endtime","value"), sep = ";") %>%
+  mutate(day = as.Date(starttime)) %>%
+  group_by(day, units) %>%
+  summarize(avg = mean(as.numeric(value)),
+            max = max(as.numeric(value)),
+            min = min(as.numeric(value)))
+
+ggplot(data=cleantotalhr, aes(x=as.Date(day), y=avg))+
+  theme_bw()+
+  geom_point()+
+  geom_point(aes(x=as.Date(day), y=min), color = "red", alpha = .4)+
+  geom_point(aes(x=as.Date(day), y=max), color = "blue", alpha = .4)+
+  geom_vline(xintercept=as.Date("2016-11-15"))+
+  scale_x_date(date_breaks = "3 month", 
+                 labels=scales::date_format("%b-%Y"))+
+  labs(title="Average Total Heart Rate", y="BPM", x="Month")
+
+
+```
+
+
+### Heart Rate Variance
+```{r, warning=FALSE}
+cleanvarhr <- varhr[-1,] %>%
+tidyr::separate("V7", c("software", "units","recordtime","starttime","endtime","value"), sep = ";") %>%
+  mutate(day = as.Date(starttime)) %>%
+  group_by(day, units) %>%
+  summarize(avg = mean(as.numeric(value)),
+            max = max(as.numeric(value)),
+            min = min(as.numeric(value)))
+
+ggplot(data=cleanvarhr, aes(x=as.Date(day), y=avg))+
+  theme_bw()+
+  geom_point()+
+  geom_vline(xintercept=as.Date("2016-11-15"))+
+  scale_x_date(date_breaks = "1 month", 
+                 labels=scales::date_format("%b-%Y"))+
+  labs(title="Average Variance, Heart Rate", y="BPM", x="Month")
+
+
+```
+
+Combined Data
+===================================== 
+
+```{r}
+cleansleep2 <- cleansleep %>%
+  mutate(day = as.Date(sleepstart), units = "seconds_sleep") %>%
+  group_by(day, units) %>%
+  summarize(sum = sum(as.numeric(lengthsleep)))
+
+
+merge1 <- merge(cleanactcal, cleandist, by=c("day", "units"), all = T) %>%
+  merge(cleanexercise, by=c("day", "units"), all = T) %>%
+  merge(cleantotalhr, by=c("day", "units"), all = T) %>%
+  merge(cleanwalkhr, by=c("day", "units"), suffixes = c("total", "walk"), all = T) %>%
+  merge(cleanvarhr, by=c("day", "units"), all = T) %>%
+  merge(cleanresthr, by=c("day", "units"), suffixes = c("var", "rest"), all = T) %>%
+    merge(cleansleep2, by=c("day", "units"), all = T)
+
+#tail(merge1)
+
+merge2 <- merge1[, -c(2)]
+
+#tail(merge2)
+merge3 <- merge2 %>%
+  group_by(day) %>% 
+  summarise_all(funs(sum(., na.rm=TRUE)))
+
+#tail(merge3)
+
+
+```
+
+Column {.tabset}
+-------------------------------------
+
+Sleep is not recorded on weekend days.
+
+### Sleep and Distance Moved
+```{r}
+ggplot(data=merge3)+
+  theme_bw()+
+  geom_point(aes(x=as.Date(day), y=distance), color ="red", alpha = .5)+
+  geom_point(aes(x=as.Date(day), y=sum/3600), color = "blue", alpha = .5)+
+  scale_x_date(date_breaks = "3 month", 
+                 labels=scales::date_format("%b-%Y"),
+               limits = c(as.Date("2016-11-15"),as.Date("2018-02-15")))+
+  labs(title="Combined Metrics: Sleep (blue), Distance (red)", x="Month")
+
+```
+
+### Sleep and Exercise Minutes
+```{r}
+ggplot(data=merge3)+
+  theme_bw()+
+  geom_point(aes(x=as.Date(day), y=minutes/60), color ="red", alpha = .5)+
+  geom_point(aes(x=as.Date(day), y=sum/3600), color = "blue", alpha = .5)+
+  scale_x_date(date_breaks = "3 month", 
+                 labels=scales::date_format("%b-%Y"),
+               limits = c(as.Date("2016-11-15"),as.Date("2018-02-15")))+
+  labs(title="Combined Metrics: Sleep (blue), Exercise Min (red)", x="Month")
+
+```
+
+
+
+### Correlations
+
+Only days when sleep is recorded.
+
+```{r}
+
+cor(merge3$calories, merge3$minutes)
+
+skimr::skim(merge4)
+
+merge4 <- dplyr::filter(merge3, day > as.Date("2016-12-01") & sum > 0)
+
+corrplot::corrplot(cor(merge4[, c("calories", "distance", "minutes", "sum", "avgtotal")]
+                       , use = "complete.obs" 
+                       ))
+
+```
+
